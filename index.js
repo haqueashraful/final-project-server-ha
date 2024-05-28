@@ -27,6 +27,7 @@ const client = new MongoClient(uri, {
 const menuCollection = client.db("bistro").collection("menu");
 const reviewCollection = client.db("bistro").collection("reviews");
 const cartCollection = client.db("bistro").collection("carts");
+const usersCollection = client.db("bistro").collection("users");
 
 async function run() {
   try {
@@ -91,15 +92,72 @@ async function run() {
       try {
         const query = { _id: new ObjectId(id) };
         const result = await cartCollection.deleteOne(query);
-        if (result.deletedCount === 1) {
-          res.send({ message: "Successfully deleted item from cart" });
-        } else {
-          res.status(404).send({ message: "Item not found in cart" });
-        }
+       res.send(result);
       } catch (error) {
         console.error(error);
         res.status(500).send("Failed to delete item from cart");
       }
+    });
+
+    // Users
+
+  app.get('/users', async (req, res) => {
+    const result = await usersCollection.find().toArray();
+    res.send(result);
+  })
+
+    app.post('/users', async (req, res) => {
+      const user = req.body;
+      const exsistingUser = await usersCollection.findOne({ email: user.email });
+      if (exsistingUser) {
+        return res.send();
+      }
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+
+    app.patch('/users/admin/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          role: 'admin'
+        }
+      };
+      const result = await usersCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    // app.patch('/users/:id', async (req, res) => {
+    //   const id = req.params.id;
+    //   const filter = { _id: new ObjectId(id) };
+    //   try {
+    //     // Fetch the current user's role
+    //     const user = await usersCollection.findOne(filter);
+    //     // Determine the new role based on the current role
+    //     const newRole = user.role === 'admin' ? 'user' : 'admin';
+    //     // Construct the update document
+    //     const updateDoc = {
+    //       $set: {
+    //         role: newRole
+    //       }
+    //     };
+    //     // Perform the update operation
+    //     const result = await usersCollection.updateOne(filter, updateDoc);
+    
+    //     res.send(result);
+    //   } catch (error) {
+    //     console.error(error);
+    //     res.status(500).send("Failed to update user role");
+    //   }
+    // });
+    
+
+    app.delete('/users/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await usersCollection.deleteOne(query);
+      res.send(result);
     });
     
 
