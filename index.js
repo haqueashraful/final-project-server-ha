@@ -81,12 +81,9 @@ async function run() {
         }
         req.decoded = {}; // Initialize req.decoded as an empty object
         req.decoded = decoded; // Set decoded token email in request object
-        console.log("req.user", req.decoded.email); // Access decoded email
         next();
       });
     };
-    
-    
 
     // Middleware to verify admin
     const verifyAdmin = async (req, res, next) => {
@@ -95,7 +92,6 @@ async function run() {
         return res.status(403).send({ message: "Forbidden access" });
       }
       const requester = req.decoded.email;
-      console.log("reqq",requester)
       const requesterAccount = await usersCollection.findOne({
         email: requester,
       });
@@ -108,30 +104,28 @@ async function run() {
     };
 
     //creating Token
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-};
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+    };
 
-// JWT
-app.post("/jwt", async (req, res) => {
-  try {
-    const email = req.body.email; // Destructure email from request body
-    const payload = { email }; // Define payload as an object containing only the email
-    console.log("email:", email);
-    const token = jwt.sign(payload, process.env.TOKEN_SECRET, {
-      expiresIn: "1h", // Set expiration time
-    }); // Sign token with payload
-    res
-      .cookie("token", token, cookieOptions)
-      .send({ token, message: "successfully" });
-  } catch (error) {
-    console.error("Error creating JWT:", error);
-    res.status(500).json({ message: "Error creating JWT" });
-  }
-});
-
+    // JWT
+    app.post("/jwt", async (req, res) => {
+      try {
+        const email = req.body.email; // Destructure email from request body
+        const payload = { email }; // Define payload as an object containing only the email
+        const token = jwt.sign(payload, process.env.TOKEN_SECRET, {
+          expiresIn: "1h", // Set expiration time
+        }); // Sign token with payload
+        res
+          .cookie("token", token, cookieOptions)
+          .send({ token, message: "successfully" });
+      } catch (error) {
+        console.error("Error creating JWT:", error);
+        res.status(500).json({ message: "Error creating JWT" });
+      }
+    });
 
     //clearing Token
     app.post("/logout", async (req, res) => {
@@ -149,6 +143,56 @@ app.post("/jwt", async (req, res) => {
       } catch (error) {
         console.error(error);
         res.status(500).send("Failed to fetch menu");
+      }
+    });
+
+    app.get("/menu/:id", async (req, res) => {
+      const id = req.params.id;
+      try {
+        const result = await menuCollection.findOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send("Failed to fetch menu item");
+      }
+    });
+
+    app.post("/menu", verifyToken, verifyAdmin, async (req, res) => {
+      const newItem = req.body;
+      try {
+        const result = await menuCollection.insertOne(newItem);
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send("Failed to add item to menu");
+      }
+    });
+
+    app.patch("/menu/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const updatedItem = req.body;
+      try {
+        const result = await menuCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedItem }
+        );
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send("Failed to update item");
+      }
+    });
+
+    app.delete("/menu/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      try {
+        const result = await menuCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send("Failed to delete item");
       }
     });
 
@@ -209,7 +253,6 @@ app.post("/jwt", async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
-
 
     // Users endpoint to get admin status
     app.get("/users/admin/:email", verifyToken, async (req, res) => {
