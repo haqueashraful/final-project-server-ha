@@ -4,9 +4,11 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 const app = express();
 const port = process.env.PORT || 5000;
+
 
 const corsOptions = {
   origin: ["http://localhost:5173", "*"],
@@ -326,6 +328,27 @@ async function run() {
       const result = await usersCollection.deleteOne(query);
       res.send(result);
     });
+
+
+      // payment intent 
+
+      app.post("/create-payment-intent", verifyToken, async (req, res) => {
+        const {price} = req.body;
+        const amount = parseFloat(price * 100);
+        console.log(amount, "amount");
+        if(isNaN(amount)) {
+          return res.status(400).send("Price is required");
+        }
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+      });
+
 
     // Root endpoint
     app.get("/", (req, res) => {
