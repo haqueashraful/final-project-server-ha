@@ -36,6 +36,7 @@ const menuCollection = client.db("bistro").collection("menu");
 const reviewCollection = client.db("bistro").collection("reviews");
 const cartCollection = client.db("bistro").collection("carts");
 const usersCollection = client.db("bistro").collection("users");
+const paymentCollection = client.db("bistro").collection("payments");
 
 async function run() {
   try {
@@ -329,24 +330,58 @@ async function run() {
       res.send(result);
     });
 
+    // save payments
+
+    app.post("/payments", async (req, res) => {
+      try {
+        const payment = req.body;
+    
+        // Insert payment into the payment collection
+        const result = await paymentCollection.insertOne(payment);
+    
+        // Create a query to remove items from cart for the specific user
+        const query = {
+          _id: {
+            $in: payment.cartIds.map(id => new ObjectId(id)),
+          }
+        };
+    
+        // Remove items from the cart collection based on the query
+        const deleteResult = await cartCollection.deleteMany(query);
+    
+        res.send({ result, deleteResult });
+      } catch (error) {
+        console.error("Error processing payment:", error);
+        res.status(500).send({ error: "An error occurred while processing the payment" });
+      }
+    });
+
 
       // payment intent 
-
       app.post("/create-payment-intent", verifyToken, async (req, res) => {
-        const {price} = req.body;
-        const amount = parseFloat(price * 100);
-        console.log(amount, "amount");
-        if(isNaN(amount)) {
-          return res.status(400).send("Price is required");
+        try {
+          const { price } = req.body;
+          const amount = parseFloat(price * 100);
+      
+          if (isNaN(amount)) {
+            return res.status(400).send("Price is required");
+          }
+      
+          // Create a payment intent with Stripe
+          const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount,
+            currency: "usd",
+            payment_method_types: ["card"],
+          });
+      
+          // Send the client secret to the client
+          res.send({
+            clientSecret: paymentIntent.client_secret,
+          });
+        } catch (error) {
+          console.error("Error creating payment intent:", error);
+          res.status(500).send({ error: "An error occurred while creating the payment intent" });
         }
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: amount,
-          currency: "usd",
-          payment_method_types: ["card"],
-        });
-        res.send({
-          clientSecret: paymentIntent.client_secret,
-        });
       });
 
 
