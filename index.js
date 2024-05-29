@@ -9,10 +9,11 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET);
 const app = express();
 const port = process.env.PORT || 5000;
 
-
 const corsOptions = {
-  origin: ["http://localhost:5173", "*"],
+  origin: "http://localhost:5173",
   credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: "Content-Type,Authorization",
 };
 
 // middleware
@@ -21,7 +22,8 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-const uri = process.env.MONGO_URI;
+// const uri = process.env.MONGO_URI;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.w7vihmt.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -41,40 +43,15 @@ const paymentCollection = client.db("bistro").collection("payments");
 async function run() {
   try {
     // Connect the client to the server
-    await client.connect();
-    console.log("Successfully connected to MongoDB!");
 
-    // verifyJWT
-    // const verifyToken = (req, res, next) => {
-    //   const authHeader = req.headers.authorization;
-    //   if (!authHeader) {
-    //     return res.status(401).send("Unauthorized access");
-    //   }
-    //   const token = authHeader.split(" ")[1];
-    //   jwt.verify(token, process.env.TOKEN_SECRET, (err, decoded) => {
-    //     if (err) {
-    //       return res.status(403).send({ message: "Forbidden access" });
-    //     }
-    //     req.decoded = decoded;
-    //     next();
-    //   });
-    // };
+    // await client.connect();
+    // console.log("Successfully connected to MongoDB!");
 
-    // verify admin
-    // const verifyAdmin = async (req, res, next) => {
-    //   const requester = req.decoded.email;
-    //   const requesterAccount = await usersCollection.findOne({
-    //     email: requester,
-    //   });
-    //   if (requesterAccount?.role === "admin") {
-    //     next();
-    //   } else {
-    //     res.status(403).send({ message: "forbidden" });
-    //   }
-    // };
+    
     // Middleware to verify token
     const verifyToken = (req, res, next) => {
       const token = req?.cookies.token;
+      console.log(token)
       if (!token) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -82,15 +59,14 @@ async function run() {
         if (err) {
           return res.status(401).send({ message: "Unauthorized access" });
         }
-        req.decoded = {}; // Initialize req.decoded as an empty object
         req.decoded = decoded; // Set decoded token email in request object
+        console.log(req.decoded)
         next();
       });
     };
 
     // Middleware to verify admin
     const verifyAdmin = async (req, res, next) => {
-      console.log("email on admin", req.decoded?.email);
       if (!req.decoded || !req.decoded.email) {
         return res.status(403).send({ message: "Forbidden access" });
       }
@@ -98,7 +74,6 @@ async function run() {
       const requesterAccount = await usersCollection.findOne({
         email: requester,
       });
-
       if (requesterAccount?.role === "admin") {
         next();
       } else {
@@ -113,16 +88,17 @@ async function run() {
       sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
     };
 
-    // JWT
     app.post("/jwt", async (req, res) => {
       try {
-        const email = req.body.email; // Destructure email from request body
+        const { email } = req.body; // Destructure email from request body
         const payload = { email }; // Define payload as an object containing only the email
         const token = jwt.sign(payload, process.env.TOKEN_SECRET, {
           expiresIn: "1h", // Set expiration time
         }); // Sign token with payload
+
         res
           .cookie("token", token, cookieOptions)
+          .status(200)
           .send({ token, message: "successfully" });
       } catch (error) {
         console.error("Error creating JWT:", error);
@@ -132,10 +108,15 @@ async function run() {
 
     //clearing Token
     app.post("/logout", async (req, res) => {
-      const user = req.body;
-      res
-        .clearCookie("token", { ...cookieOptions, maxAge: 0 })
-        .send({ success: true });
+      try {
+        res
+          .clearCookie("token", cookieOptions)
+          .status(200)
+          .send({ success: true });
+      } catch (error) {
+        console.error("Error clearing JWT:", error);
+        res.status(500).json({ message: "Error clearing JWT" });
+      }
     });
 
     // Menu
@@ -258,18 +239,26 @@ async function run() {
     });
 
     // Users endpoint to get admin status
-    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+    app.get("/users/admin/:email", async (req, res) => {
       try {
+        // Extract email from request parameters
         const email = req.params.email;
+        
+        // Find the user with the specified email
         const user = await usersCollection.findOne({ email });
+    
+        // Check if the user exists and if their role is "admin"
         const isAdmin = user?.role === "admin" ? true : false;
+        
+        // Send the isAdmin status as response
         res.send({ isAdmin });
       } catch (error) {
+        // Handle errors
         console.error("Error fetching admin status:", error);
         res.status(500).json({ message: "Error fetching admin status" });
       }
     });
-
+    
     app.post("/users", async (req, res) => {
       const user = req.body;
       const exsistingUser = await usersCollection.findOne({
@@ -299,30 +288,6 @@ async function run() {
       }
     );
 
-    // app.patch('/users/:id', async (req, res) => {
-    //   const id = req.params.id;
-    //   const filter = { _id: new ObjectId(id) };
-    //   try {
-    //     // Fetch the current user's role
-    //     const user = await usersCollection.findOne(filter);
-    //     // Determine the new role based on the current role
-    //     const newRole = user.role === 'admin' ? 'user' : 'admin';
-    //     // Construct the update document
-    //     const updateDoc = {
-    //       $set: {
-    //         role: newRole
-    //       }
-    //     };
-    //     // Perform the update operation
-    //     const result = await usersCollection.updateOne(filter, updateDoc);
-
-    //     res.send(result);
-    //   } catch (error) {
-    //     console.error(error);
-    //     res.status(500).send("Failed to update user role");
-    //   }
-    // });
-
     app.delete("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -335,55 +300,59 @@ async function run() {
     app.post("/payments", async (req, res) => {
       try {
         const payment = req.body;
-    
+
         // Insert payment into the payment collection
         const result = await paymentCollection.insertOne(payment);
-    
+
         // Create a query to remove items from cart for the specific user
         const query = {
           _id: {
-            $in: payment.cartIds.map(id => new ObjectId(id)),
-          }
+            $in: payment.cartIds.map((id) => new ObjectId(id)),
+          },
         };
-    
+
         // Remove items from the cart collection based on the query
         const deleteResult = await cartCollection.deleteMany(query);
-    
+
         res.send({ result, deleteResult });
       } catch (error) {
         console.error("Error processing payment:", error);
-        res.status(500).send({ error: "An error occurred while processing the payment" });
+        res
+          .status(500)
+          .send({ error: "An error occurred while processing the payment" });
       }
     });
 
+    // payment intent
+    app.post("/create-payment-intent", verifyToken, async (req, res) => {
+      try {
+        const { price } = req.body;
+        const amount = parseFloat(price * 100);
 
-      // payment intent 
-      app.post("/create-payment-intent", verifyToken, async (req, res) => {
-        try {
-          const { price } = req.body;
-          const amount = parseFloat(price * 100);
-      
-          if (isNaN(amount)) {
-            return res.status(400).send("Price is required");
-          }
-      
-          // Create a payment intent with Stripe
-          const paymentIntent = await stripe.paymentIntents.create({
-            amount: amount,
-            currency: "usd",
-            payment_method_types: ["card"],
-          });
-      
-          // Send the client secret to the client
-          res.send({
-            clientSecret: paymentIntent.client_secret,
-          });
-        } catch (error) {
-          console.error("Error creating payment intent:", error);
-          res.status(500).send({ error: "An error occurred while creating the payment intent" });
+        if (isNaN(amount)) {
+          return res.status(400).send("Price is required");
         }
-      });
 
+        // Create a payment intent with Stripe
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+
+        // Send the client secret to the client
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+      } catch (error) {
+        console.error("Error creating payment intent:", error);
+        res
+          .status(500)
+          .send({
+            error: "An error occurred while creating the payment intent",
+          });
+      }
+    });
 
     // Root endpoint
     app.get("/", (req, res) => {
@@ -391,10 +360,10 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } catch (error) {
     console.error("Error connecting to MongoDB:", error);
   }
