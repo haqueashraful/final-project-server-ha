@@ -8,9 +8,12 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 const app = express();
 const port = process.env.PORT || 5000;
-
 const corsOptions = {
-  origin: "http://localhost:5173",
+  origin: [
+    "http://localhost:5173",
+    "https://restaurant-management.netlify.app",
+    "*",
+  ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: "Content-Type,Authorization",
@@ -47,11 +50,10 @@ async function run() {
     // await client.connect();
     // console.log("Successfully connected to MongoDB!");
 
-    
     // Middleware to verify token
     const verifyToken = (req, res, next) => {
       const token = req?.cookies.token;
-      console.log(token)
+      console.log(token);
       if (!token) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -60,7 +62,7 @@ async function run() {
           return res.status(401).send({ message: "Unauthorized access" });
         }
         req.decoded = decoded; // Set decoded token email in request object
-        console.log(req.decoded)
+        console.log(req.decoded);
         next();
       });
     };
@@ -243,13 +245,13 @@ async function run() {
       try {
         // Extract email from request parameters
         const email = req.params.email;
-        
+
         // Find the user with the specified email
         const user = await usersCollection.findOne({ email });
-    
+
         // Check if the user exists and if their role is "admin"
         const isAdmin = user?.role === "admin" ? true : false;
-        
+
         // Send the isAdmin status as response
         res.send({ isAdmin });
       } catch (error) {
@@ -258,7 +260,7 @@ async function run() {
         res.status(500).json({ message: "Error fetching admin status" });
       }
     });
-    
+
     app.post("/users", async (req, res) => {
       const user = req.body;
       const exsistingUser = await usersCollection.findOne({
@@ -346,11 +348,9 @@ async function run() {
         });
       } catch (error) {
         console.error("Error creating payment intent:", error);
-        res
-          .status(500)
-          .send({
-            error: "An error occurred while creating the payment intent",
-          });
+        res.status(500).send({
+          error: "An error occurred while creating the payment intent",
+        });
       }
     });
 
