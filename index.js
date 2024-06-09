@@ -241,6 +241,13 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await usersCollection.findOne(query);
+      res.send(result);
+    });
+
     // Users endpoint to get admin status
     app.get("/users/admin/:email", async (req, res) => {
       try {
@@ -414,6 +421,26 @@ async function run() {
         .toArray();
       const revenue = totalRevenue ? totalRevenue[0].total : 0;
       res.send({ users, products, orders, revenue });
+    });
+
+    // user stats
+    app.get("/user-stats/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+
+      try {
+        const payments = await paymentCollection.countDocuments(query);
+        const orders = await paymentCollection.countDocuments(query);
+        const bookings = await bookingCollection.countDocuments(query);
+        const reviews = await reviewCollection.countDocuments(query);
+        const menu = await menuCollection.countDocuments();
+        const shop = await cartCollection.countDocuments(query);
+
+        res.send({ payments, orders, bookings, reviews });
+      } catch (error) {
+        console.error("Error fetching user stats:", error);
+        res.status(500).send("Failed to fetch user stats");
+      }
     });
 
     // Root endpoint
