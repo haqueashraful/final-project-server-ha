@@ -8,11 +8,11 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 const app = express();
 const port = process.env.PORT || 5000;
+
 const corsOptions = {
   origin: [
     "http://localhost:5173",
-    "https://restaurant-management.netlify.app",
-    "*",
+    "https://restaurant-managemnet.netlify.app",
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
@@ -42,6 +42,7 @@ const reviewCollection = client.db("bistro").collection("reviews");
 const cartCollection = client.db("bistro").collection("carts");
 const usersCollection = client.db("bistro").collection("users");
 const paymentCollection = client.db("bistro").collection("payments");
+const bookingCollection = client.db("bistro").collection("bookings");
 
 async function run() {
   try {
@@ -297,16 +298,50 @@ async function run() {
       res.send(result);
     });
 
-    // save payments
+    // booking
+    app.get("/bookings", verifyToken, async (req, res) => {
+      const result = await bookingCollection.find().toArray();
+      res.send(result);
+    });
 
+    app.get("/bookings/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      const result = await bookingCollection.find({ email }).toArray();
+      res.send(result);
+    });
+
+    app.post("/bookings", async (req, res) => {
+      const booking = req.body;
+      // Ensure the booking object includes isPending
+      booking.isPending = true;
+
+      try {
+        const result = await bookingCollection.insertOne(booking);
+        res.status(201).send(result);
+      } catch (error) {
+        console.error("Error adding booking:", error);
+        res.status(500).send("Failed to add booking");
+      }
+    });
+
+    app.patch("/bookings/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          isPending: false,
+        },
+      };
+      const result = await bookingCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    // save payments
     app.post("/payments", async (req, res) => {
       try {
         const payment = req.body;
 
-        // Insert payment into the payment collection
         const result = await paymentCollection.insertOne(payment);
-
-        // Create a query to remove items from cart for the specific user
         const query = {
           _id: {
             $in: payment.cartIds.map((id) => new ObjectId(id)),
@@ -323,6 +358,13 @@ async function run() {
           .status(500)
           .send({ error: "An error occurred while processing the payment" });
       }
+    });
+
+    app.get("/payments/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result);
     });
 
     // payment intent
@@ -352,6 +394,26 @@ async function run() {
           error: "An error occurred while creating the payment intent",
         });
       }
+    });
+
+    // admin stats
+
+    app.get("/admin-stats", verifyToken, verifyAdmin, async (req, res) => {
+      const users = await usersCollection.estimatedDocumentCount();
+      const products = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+      const totalRevenue = await paymentCollection
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$price" },
+            },
+          },
+        ])
+        .toArray();
+      const revenue = totalRevenue ? totalRevenue[0].total : 0;
+      res.send({ users, products, orders, revenue });
     });
 
     // Root endpoint
